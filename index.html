@@ -1,0 +1,852 @@
+```html
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>O Peso do Julgamento - Analog Horror</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap');
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000; overflow: hidden;
+            font-family: 'Courier Prime', monospace;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none; /* Impede zoom/scroll no mobile */
+        }
+
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        /* Filtro VHS */
+        .vhs-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none; z-index: 10;
+            opacity: 0.8; mix-blend-mode: overlay;
+        }
+
+        .noise {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+            opacity: 0.05; pointer-events: none; z-index: 11;
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.05; } 50% { opacity: 0.07; } 100% { opacity: 0.05; transform: translate(1px, -1px); }
+        }
+
+        /* Interface do Utilizador */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; }
+
+        /* Controlos Mobile */
+        #left-zone {
+            position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px;
+            background: rgba(255, 255, 255, 0.1); border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3);
+            display: none; /* Só mostra após iniciar */
+        }
+        #joystick-knob {
+            position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.5); border-radius: 50%;
+        }
+        #right-zone {
+            position: absolute; top: 0; right: 0; width: 50%; height: 100%;
+            display: none; /* Só mostra após iniciar */
+        }
+
+        /* Ecrãs e Botões */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.85); color: #fff; text-align: center; padding: 20px; box-sizing: border-box;
+        }
+
+        .btn {
+            background: none; border: 1px solid #fff; color: #fff; font-family: 'Courier Prime', monospace;
+            padding: 15px 30px; font-size: 1.2rem; cursor: pointer; text-transform: uppercase;
+            margin-top: 20px; pointer-events: auto;
+        }
+        .btn:active { background: #fff; color: #000; }
+
+        .action-btn {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: none; z-index: 30; background: rgba(0,0,0,0.7); border: 2px solid #fff;
+            color: #fff; padding: 15px 25px; font-size: 1rem; font-family: 'Courier Prime';
+            text-transform: uppercase; border-radius: 5px;
+        }
+
+        /* Nota (A Carta) */
+        #note-screen { display: none; background: rgba(0,0,0,0.95); justify-content: flex-start; padding-top: 50px; overflow-y: auto;}
+        #note-content { max-width: 600px; text-align: left; line-height: 1.6; font-size: 1.1rem; color: #ccc; }
+        .red-text { color: #aa0000; font-weight: bold; }
+
+        /* Final Fake */
+        #garden-screen { display: none; background: rgba(255,255,255,0.1); }
+        #garden-screen h1 { font-size: 3rem; text-shadow: 0 0 10px #000; }
+
+        /* Final Verdadeiro */
+        #eye-screen { display: none; background: #000; }
+        .eye-container {
+            width: 150px; height: 100px; background: #fff; border-radius: 50%;
+            position: relative; overflow: hidden; margin: 0 auto 40px auto;
+            box-shadow: inset 0 0 20px #000, 0 0 30px rgba(255,0,0,0.2);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .pupil {
+            width: 40px; height: 40px; background: #000; border-radius: 50%;
+            position: absolute;
+            animation: franticEye 0.2s infinite;
+        }
+        @keyframes franticEye {
+            0% { transform: translate(0, 0); }
+            20% { transform: translate(15px, -10px); }
+            40% { transform: translate(-20px, 5px); }
+            60% { transform: translate(10px, 15px); }
+            80% { transform: translate(-15px, -15px); }
+            100% { transform: translate(5px, 0); }
+        }
+        #final-text { max-width: 600px; text-align: left; line-height: 1.8; font-size: 1rem; color: #777; }
+
+        /* Jumpscare */
+        #jumpscare-layer {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: url('data:image/svg+xml,%3Csvg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"%3E%3Ccircle cx="50" cy="50" r="40" fill="%23000" /%3E%3Ccircle cx="35" cy="40" r="5" fill="%23fff" /%3E%3Ccircle cx="65" cy="40" r="5" fill="%23fff" /%3E%3Cpath d="M 30 70 Q 50 90 70 70" stroke="%23fff" stroke-width="5" fill="none" /%3E%3C/svg%3E') no-repeat center center;
+            background-size: cover; background-color: #000;
+            display: none; z-index: 100; filter: invert(1) contrast(5);
+            animation: shake 0.1s infinite;
+        }
+        @keyframes shake {
+            0% { transform: translate(10px, 10px); } 25% { transform: translate(-10px, -10px); }
+            50% { transform: translate(-10px, 10px); } 75% { transform: translate(10px, -10px); }
+        }
+
+    </style>
+    <!-- Biblioteca Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="game-container"></div>
+    <div class="vhs-overlay"></div>
+    <div class="noise"></div>
+
+    <div id="ui-layer">
+        <!-- Ecrã Inicial -->
+        <div id="start-screen" class="screen">
+            <h2>O Peso do Julgamento</h2>
+            <p style="font-size: 0.9rem; color: #aaa;">Use o lado esquerdo do ecrã para andar.<br>Use o lado direito para olhar ao redor.</p>
+            <p style="font-size: 0.8rem; color: #666;">Atenção: Contém luzes a piscar, ruídos altos e temas perturbadores.</p>
+            <button class="btn" id="btn-start">Iniciar</button>
+        </div>
+
+        <!-- Controlos de Jogo (Escondidos no início) -->
+        <div id="left-zone">
+            <div id="joystick-knob"></div>
+        </div>
+        <div id="right-zone"></div>
+
+        <!-- Botões de Ação Contextuais -->
+        <button class="action-btn" id="btn-enter">Entrar na Casa</button>
+        <button class="action-btn" id="btn-read">Ler a Carta</button>
+        <button class="action-btn" id="btn-exit">Sair da Casa</button>
+
+        <!-- Ecrã da Carta -->
+        <div id="note-screen" class="screen">
+            <div id="note-content">
+                <p>"Os anjos não descerão com trompetas e nem com luz, mas com o peso do julgamento em suas asas"</p>
+                <p>"Eles foram enviados pelo dedo de Deus, esse mesmo Deus que escreveu o fim nas pedras do céu."</p>
+                <p>"Esses anjos não trazem palavras e nem compaixão Pois a sua presença...na verdade é uma <span class="red-text">sentença!</span>"</p>
+                <p>"Eles não foram criados para amar, mas sim para lembrar à Terra quem a Criou."</p>
+                <p class="red-text">"Um Deus de ódio e caos!"</p>
+            </div>
+            <button class="btn" id="btn-close-note">Voltar</button>
+        </div>
+
+        <!-- Ecrã Falso de Fim (Jardim) -->
+        <div id="garden-screen" class="screen">
+            <h1>Fim!</h1>
+            <button class="btn" id="btn-fake-back">Voltar</button>
+        </div>
+
+        <!-- Final Verdadeiro (Olho) -->
+        <div id="eye-screen" class="screen">
+            <div class="eye-container">
+                <div class="pupil"></div>
+            </div>
+            <div id="final-text">
+                <p>Não existe saída.</p>
+                <p>Você entrou… e o jardim já entrou em você.</p>
+                <p>O chão pulsa sob seus pés — não é terra, é carne morna, respirando lento, esperando. As raízes não crescem, elas rastejam. Procuram. Sentem. E quando te encontram, não soltam.</p>
+                <p>Sua pele vai ceder primeiro. Rasgar em silêncio, como se sempre tivesse pertencido ali. Seus ossos vão envergar, afundar, alimentar. Sua voz? Engolida. Transformada em um sussurro úmido entre as folhas.</p>
+                <p>Você não vai morrer.</p>
+                <p>Vai continuar… espalhado. Cultivado.</p>
+                <p>E o jardim… nunca para de crescer.</p>
+            </div>
+        </div>
+
+        <!-- Camada de Jumpscare -->
+        <div id="jumpscare-layer"></div>
+    </div>
+
+<script>
+// --- VARIÁVEIS GLOBAIS E ESTADO ---
+let scene, camera, renderer;
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+let moveVector = new THREE.Vector3();
+let touchLookDelta = { x: 0, y: 0 };
+let lookSpeed = 0.005;
+let moveSpeed = 0.08;
+
+const STATE = { START: 0, FOREST: 1, INSIDE: 2, READING: 3, HUNTED: 4, JUMPSCARE: 5, GARDEN: 6, ENDING: 7 };
+let currentState = STATE.START;
+
+let colliders = { forest: [], inside: [], garden: [] };
+
+// Objetos Importantes
+let player = new THREE.Object3D();
+let flashlight;
+let monster;
+let houseEntrancePos = new THREE.Vector3(0, 1.5, -45);
+let houseExitPos = new THREE.Vector3(1000, 1.5, 8);
+let tablePos = new THREE.Vector3(1000, 1.5, -5);
+
+// Sistema de Áudio (Web Audio API)
+let audioCtx;
+let windNode, sinisterNode, sinisterGain, wetSoundInterval;
+
+// Elementos do DOM
+const btnStart = document.getElementById('btn-start');
+const leftZone = document.getElementById('left-zone');
+const rightZone = document.getElementById('right-zone');
+const joyKnob = document.getElementById('joystick-knob');
+const btnEnter = document.getElementById('btn-enter');
+const btnRead = document.getElementById('btn-read');
+const btnExit = document.getElementById('btn-exit');
+const btnCloseNote = document.getElementById('btn-close-note');
+const btnFakeBack = document.getElementById('btn-fake-back');
+const noteScreen = document.getElementById('note-screen');
+const gardenScreen = document.getElementById('garden-screen');
+const eyeScreen = document.getElementById('eye-screen');
+const jumpscareLayer = document.getElementById('jumpscare-layer');
+
+// --- INICIALIZAÇÃO THREE.JS ---
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205);
+    scene.fog = new THREE.FogExp2(0x020205, 0.06); // Nevoeiro denso e escuro
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    player.add(camera);
+    player.position.set(0, 1.5, 0); // Altura do jogador
+    scene.add(player);
+
+    // Lanterna do jogador
+    flashlight = new THREE.SpotLight(0xffffff, 1.5, 50, Math.PI / 4, 0.5, 1);
+    flashlight.position.set(0, 0, 0);
+    flashlight.target.position.set(0, 0, -1);
+    camera.add(flashlight);
+    camera.add(flashlight.target);
+
+    // Luz ambiente fraca na floresta
+    const ambientLight = new THREE.AmbientLight(0x101520, 0.2);
+    scene.add(ambientLight);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('game-container').appendChild(renderer.domElement);
+
+    buildForest();
+    buildInside();
+    buildGarden();
+    createMonster();
+
+    setupControls();
+    setupInteractions();
+
+    window.addEventListener('resize', onWindowResize, false);
+    
+    // Inicia o ciclo de renderização
+    animate();
+}
+
+// --- CONSTRUTORES DE AMBIENTE ---
+
+function buildForest() {
+    // Chão da floresta
+    const floorGeo = new THREE.PlaneGeometry(200, 200);
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x051005 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    // Árvores
+    const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 5, 8);
+    const leavesGeo = new THREE.SphereGeometry(2.5, 8, 8);
+    const barkMat = new THREE.MeshLambertMaterial({ color: 0x1a1105 });
+    const leavesMat = new THREE.MeshLambertMaterial({ color: 0x0a1a0a });
+
+    for (let i = 0; i < 150; i++) {
+        let x = (Math.random() - 0.5) * 150;
+        let z = (Math.random() - 0.5) * 150;
+        
+        // Área limpa perto do ponto inicial e da casa
+        if (Math.abs(x) < 5 && Math.abs(z) < 5) continue; 
+        if (Math.abs(x) < 10 && Math.abs(z + 50) < 10) continue; 
+
+        let trunk = new THREE.Mesh(trunkGeo, barkMat);
+        trunk.position.set(x, 2.5, z);
+        scene.add(trunk);
+
+        let leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.set(x, 5.5, z);
+        scene.add(leaves);
+
+        colliders.forest.push({ type: 'circle', x: x, z: z, r: 0.7 });
+    }
+
+    // Exterior da Casa (no mundo da floresta)
+    const houseGeo = new THREE.BoxGeometry(10, 6, 10);
+    const houseMat = new THREE.MeshLambertMaterial({ color: 0x221111 });
+    const house = new THREE.Mesh(houseGeo, houseMat);
+    house.position.set(0, 3, -50);
+    scene.add(house);
+
+    // Porta
+    const doorGeo = new THREE.PlaneGeometry(2, 4);
+    const doorMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const door = new THREE.Mesh(doorGeo, doorMat);
+    door.position.set(0, 2, -44.9); // Ligeiramente à frente da parede
+    scene.add(door);
+
+    colliders.forest.push({ type: 'box', minX: -5, maxX: 5, minZ: -55, maxZ: -45 });
+}
+
+function buildInside() {
+    // Usaremos uma compensação (offset) enorme para "teletransportar" o jogador sem precisar de duas scenes renderizadas
+    const offset = new THREE.Vector3(1000, 0, 0);
+
+    // Sala por dentro
+    const roomGeo = new THREE.BoxGeometry(15, 5, 20);
+    const roomMat = new THREE.MeshLambertMaterial({ color: 0x332211, side: THREE.BackSide });
+    const room = new THREE.Mesh(roomGeo, roomMat);
+    room.position.copy(offset).add(new THREE.Vector3(0, 2.5, 0));
+    scene.add(room);
+
+    // Porta de saída vista de dentro
+    const exitDoorGeo = new THREE.PlaneGeometry(2, 4);
+    const exitDoorMat = new THREE.MeshBasicMaterial({ color: 0x110000 });
+    const exitDoor = new THREE.Mesh(exitDoorGeo, exitDoorMat);
+    exitDoor.position.copy(offset).add(new THREE.Vector3(0, 2, 9.9));
+    exitDoor.rotation.y = Math.PI;
+    scene.add(exitDoor);
+
+    // Mesa
+    const tableGeo = new THREE.BoxGeometry(3, 1, 2);
+    const tableMat = new THREE.MeshLambertMaterial({ color: 0x1a0d00 });
+    const table = new THREE.Mesh(tableGeo, tableMat);
+    table.position.copy(offset).add(new THREE.Vector3(0, 0.5, -5));
+    scene.add(table);
+
+    // Papel na mesa
+    const paperGeo = new THREE.PlaneGeometry(0.5, 0.7);
+    const paperMat = new THREE.MeshBasicMaterial({ color: 0xddddcc });
+    const paper = new THREE.Mesh(paperGeo, paperMat);
+    paper.position.copy(offset).add(new THREE.Vector3(0, 1.01, -5));
+    paper.rotation.x = -Math.PI / 2;
+    scene.add(paper);
+
+    // Luz da sala
+    const roomLight = new THREE.PointLight(0xffaa55, 0.5, 20);
+    roomLight.position.copy(offset).add(new THREE.Vector3(0, 4, 0));
+    scene.add(roomLight);
+
+    // Colisões da sala (Paredes e mesa)
+    colliders.inside.push({ type: 'box', minX: 1000-7.5, maxX: 1000+7.5, minZ: -10, maxZ: -9.5 }); // Parede fundo
+    colliders.inside.push({ type: 'box', minX: 1000-7.5, maxX: 1000+7.5, minZ: 9.5, maxZ: 10 }); // Parede porta
+    colliders.inside.push({ type: 'box', minX: 1000-7.5, maxX: 1000-7, minZ: -10, maxZ: 10 }); // Parede esq
+    colliders.inside.push({ type: 'box', minX: 1000+7, maxX: 1000+7.5, minZ: -10, maxZ: 10 }); // Parede dir
+    colliders.inside.push({ type: 'box', minX: 1000-1.5, maxX: 1000+1.5, minZ: -6, maxZ: -4 }); // Mesa
+}
+
+function buildGarden() {
+    const offset = new THREE.Vector3(2000, 0, 0);
+
+    // O "Céu" e Paredes Cinzentas
+    const gardenBoxGeo = new THREE.BoxGeometry(60, 20, 60);
+    const gardenBoxMat = new THREE.MeshLambertMaterial({ color: 0x888888, side: THREE.BackSide });
+    const gardenBox = new THREE.Mesh(gardenBoxGeo, gardenBoxMat);
+    gardenBox.position.copy(offset).add(new THREE.Vector3(0, 10, 0));
+    scene.add(gardenBox);
+
+    // A Porta na parede cinzenta (de onde viemos conceptualmente)
+    const gardenDoorGeo = new THREE.PlaneGeometry(3, 6);
+    const gardenDoorMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+    const gardenDoor = new THREE.Mesh(gardenDoorGeo, gardenDoorMat);
+    gardenDoor.position.copy(offset).add(new THREE.Vector3(0, 3, 29.9));
+    gardenDoor.rotation.y = Math.PI;
+    scene.add(gardenDoor);
+
+    // Chão Verde Brilhante
+    const floorGeo = new THREE.PlaneGeometry(60, 60);
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x55aa22 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.copy(offset).add(new THREE.Vector3(0, 0.01, 0));
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    // Árvores Floridas
+    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 4, 8);
+    const leavesGeo = new THREE.SphereGeometry(2, 8, 8);
+    const barkMat = new THREE.MeshLambertMaterial({ color: 0x553311 });
+    const leavesMat = new THREE.MeshLambertMaterial({ color: 0xffaaee }); // Rosa florido
+
+    for (let i = 0; i < 25; i++) {
+        let x = (Math.random() - 0.5) * 50;
+        let z = (Math.random() - 0.5) * 50;
+        
+        let trunk = new THREE.Mesh(trunkGeo, barkMat);
+        trunk.position.set(2000 + x, 2, z);
+        scene.add(trunk);
+
+        let leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.set(2000 + x, 4, z);
+        scene.add(leaves);
+        
+        colliders.garden.push({ type: 'circle', x: 2000+x, z: z, r: 0.5 });
+    }
+
+    // Colisões das paredes do jardim
+    colliders.garden.push({ type: 'box', minX: 2000-30, maxX: 2000+30, minZ: -30, maxZ: -29 });
+    colliders.garden.push({ type: 'box', minX: 2000-30, maxX: 2000+30, minZ: 29, maxZ: 30 });
+    colliders.garden.push({ type: 'box', minX: 2000-30, maxX: 2000-29, minZ: -30, maxZ: 30 });
+    colliders.garden.push({ type: 'box', minX: 2000+29, maxX: 2000+30, minZ: -30, maxZ: 30 });
+
+    // Luz forte de "Dia"
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    sunLight.position.copy(offset).add(new THREE.Vector3(0, 15, 0));
+    sunLight.target.position.copy(offset);
+    scene.add(sunLight);
+    scene.add(sunLight.target);
+}
+
+function createMonster() {
+    monster = new THREE.Group();
+    
+    // Corpo bizarro
+    const bodyGeo = new THREE.CylinderGeometry(0.2, 0.8, 4, 7);
+    const bodyMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 2;
+    monster.add(body);
+
+    const headGeo = new THREE.SphereGeometry(0.6, 8, 8);
+    const head = new THREE.Mesh(headGeo, bodyMat);
+    head.position.y = 4.2;
+    monster.add(head);
+
+    // Olhos
+    const eyeGeo = new THREE.SphereGeometry(0.08, 4, 4);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.2, 4.3, -0.55);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(0.2, 4.3, -0.55);
+    monster.add(eyeL);
+    monster.add(eyeR);
+
+    // Esconde por enquanto
+    monster.position.set(0, -100, 0);
+    scene.add(monster);
+}
+
+// --- CONTROLOS MOBILE ---
+function setupControls() {
+    let activeJoystickId = null;
+    const baseRadius = 60;
+    const knobRadius = 25;
+
+    leftZone.addEventListener('touchstart', (e) => {
+        if (currentState !== STATE.FOREST && currentState !== STATE.INSIDE && currentState !== STATE.HUNTED && currentState !== STATE.GARDEN) return;
+        activeJoystickId = e.changedTouches[0].identifier;
+        handleJoystickMove(e.changedTouches[0]);
+    });
+
+    leftZone.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === activeJoystickId) {
+                handleJoystickMove(e.changedTouches[i]);
+            }
+        }
+    });
+
+    const resetJoystick = () => {
+        activeJoystickId = null;
+        joyKnob.style.transform = `translate(0px, 0px)`;
+        moveVector.set(0,0,0);
+    };
+
+    leftZone.addEventListener('touchend', resetJoystick);
+    leftZone.addEventListener('touchcancel', resetJoystick);
+
+    function handleJoystickMove(touch) {
+        const rect = leftZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = baseRadius - knobRadius;
+        
+        if (dist > maxDist) {
+            dx = (dx / dist) * maxDist;
+            dy = (dy / dist) * maxDist;
+        }
+        
+        joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        
+        // Normaliza de -1 a 1
+        moveVector.x = dx / maxDist;
+        moveVector.z = dy / maxDist;
+    }
+
+    // Controlo de Câmara
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    let activeLookId = null;
+
+    rightZone.addEventListener('touchstart', (e) => {
+        if (currentState !== STATE.FOREST && currentState !== STATE.INSIDE && currentState !== STATE.HUNTED && currentState !== STATE.GARDEN) return;
+        activeLookId = e.changedTouches[0].identifier;
+        lastTouchX = e.changedTouches[0].clientX;
+        lastTouchY = e.changedTouches[0].clientY;
+    });
+
+    rightZone.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === activeLookId) {
+                let dx = e.changedTouches[i].clientX - lastTouchX;
+                let dy = e.changedTouches[i].clientY - lastTouchY;
+                
+                player.rotation.y -= dx * lookSpeed;
+                camera.rotation.x -= dy * lookSpeed;
+                
+                // Trava o limite de olhar para cima/baixo
+                camera.rotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, camera.rotation.x));
+                
+                lastTouchX = e.changedTouches[i].clientX;
+                lastTouchY = e.changedTouches[i].clientY;
+            }
+        }
+    });
+
+    rightZone.addEventListener('touchend', () => activeLookId = null);
+    rightZone.addEventListener('touchcancel', () => activeLookId = null);
+}
+
+// --- FÍSICA E MOVIMENTO ---
+function checkCollision(newX, newZ, collidersArray) {
+    for (let col of collidersArray) {
+        if (col.type === 'circle') {
+            let dx = newX - col.x;
+            let dz = newZ - col.z;
+            if (Math.sqrt(dx*dx + dz*dz) < col.r + 0.5) return true; // 0.5 é o raio do jogador
+        } else if (col.type === 'box') {
+            if (newX > col.minX - 0.5 && newX < col.maxX + 0.5 &&
+                newZ > col.minZ - 0.5 && newZ < col.maxZ + 0.5) return true;
+        }
+    }
+    return false;
+}
+
+function updateMovement() {
+    if (moveVector.lengthSq() > 0 && (currentState === STATE.FOREST || currentState === STATE.INSIDE || currentState === STATE.HUNTED || currentState === STATE.GARDEN)) {
+        
+        let forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+        let right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+        
+        let moveDir = new THREE.Vector3();
+        moveDir.addScaledVector(right, moveVector.x);
+        moveDir.addScaledVector(forward, -moveVector.z);
+        moveDir.normalize().multiplyScalar(moveSpeed);
+
+        let newX = player.position.x + moveDir.x;
+        let newZ = player.position.z + moveDir.z;
+
+        // Seleciona as colisões do ambiente atual
+        let activeCols = colliders.forest;
+        if (currentState === STATE.INSIDE) activeCols = colliders.inside;
+        if (currentState === STATE.GARDEN) activeCols = colliders.garden;
+
+        // Movimento com colisão deslizante (Eixos separados)
+        if (!checkCollision(newX, player.position.z, activeCols)) {
+            player.position.x = newX;
+        }
+        if (!checkCollision(player.position.x, newZ, activeCols)) {
+            player.position.z = newZ;
+        }
+
+        // Bobbing (Caminhar)
+        player.position.y = 1.5 + Math.sin(Date.now() * 0.005) * 0.05;
+    }
+}
+
+// --- INTERAÇÕES E LÓGICA DO JOGO ---
+function setupInteractions() {
+    btnStart.addEventListener('click', () => {
+        document.getElementById('start-screen').style.display = 'none';
+        leftZone.style.display = 'block';
+        rightZone.style.display = 'block';
+        initAudio();
+        currentState = STATE.FOREST;
+        // Tenta Ecrã Inteiro
+        if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+    });
+
+    btnEnter.addEventListener('click', () => {
+        btnEnter.style.display = 'none';
+        currentState = STATE.INSIDE;
+        player.position.set(1000, 1.5, 5); // Teleporta para dentro
+        player.rotation.set(0, 0, 0);
+        camera.rotation.set(0, 0, 0);
+        flashlight.intensity = 0.5; // Lanterna fraca dentro
+        scene.fog.density = 0.01; // Menos névoa
+    });
+
+    btnRead.addEventListener('click', () => {
+        btnRead.style.display = 'none';
+        currentState = STATE.READING;
+        noteScreen.style.display = 'flex';
+        leftZone.style.display = 'none';
+        rightZone.style.display = 'none';
+        startSinisterMusic();
+    });
+
+    btnCloseNote.addEventListener('click', () => {
+        noteScreen.style.display = 'none';
+        leftZone.style.display = 'block';
+        rightZone.style.display = 'block';
+        currentState = STATE.INSIDE;
+        stopSinisterMusic();
+    });
+
+    btnExit.addEventListener('click', () => {
+        btnExit.style.display = 'none';
+        currentState = STATE.HUNTED;
+        player.position.set(0, 1.5, -42); // Volta para a floresta
+        player.rotation.y = 0; // Olhando para fora da casa
+        flashlight.intensity = 1.5;
+        scene.fog.density = 0.06;
+
+        // Faz o spawn do monstro
+        monster.position.set((Math.random() - 0.5) * 100, 0, 50); // Longe, atrás
+    });
+
+    btnFakeBack.addEventListener('click', () => {
+        gardenScreen.style.display = 'none';
+        eyeScreen.style.display = 'flex';
+        currentState = STATE.ENDING;
+        scene.background = new THREE.Color(0x000000);
+        document.getElementById('game-container').style.display = 'none'; // Esconde o 3D
+        document.querySelector('.vhs-overlay').style.display = 'none';
+    });
+}
+
+function checkTriggers() {
+    btnEnter.style.display = 'none';
+    btnRead.style.display = 'none';
+    btnExit.style.display = 'none';
+
+    if (currentState === STATE.FOREST) {
+        let dist = player.position.distanceTo(houseEntrancePos);
+        if (dist < 4) btnEnter.style.display = 'block';
+    } 
+    else if (currentState === STATE.INSIDE) {
+        let distTable = player.position.distanceTo(tablePos);
+        if (distTable < 3) btnRead.style.display = 'block';
+
+        let distDoor = player.position.distanceTo(houseExitPos);
+        if (distDoor < 4) btnExit.style.display = 'block';
+    }
+}
+
+function updateMonster() {
+    if (currentState === STATE.HUNTED) {
+        // Monstro sempre olha para o jogador e move-se lentamente
+        monster.lookAt(player.position.x, monster.position.y, player.position.z);
+        let dir = new THREE.Vector3().subVectors(player.position, monster.position).normalize();
+        monster.position.addScaledVector(dir, 0.06); // Velocidade do monstro
+
+        // Flutuação sinistra
+        monster.position.y = Math.sin(Date.now() * 0.002) * 0.5;
+
+        let dist = player.position.distanceTo(monster.position);
+
+        // Som de carne húmida a aproximar-se
+        if (dist < 20 && !wetSoundInterval) {
+            wetSoundInterval = setInterval(playWetSound, 800);
+        }
+
+        // JUMPSCARE!
+        if (dist < 2.5) {
+            triggerJumpscare();
+        }
+    }
+}
+
+function triggerJumpscare() {
+    currentState = STATE.JUMPSCARE;
+    if(wetSoundInterval) clearInterval(wetSoundInterval);
+    playJumpscareSound();
+    
+    // Força a câmara a olhar para o monstro
+    player.lookAt(monster.position);
+    camera.rotation.x = 0;
+    
+    jumpscareLayer.style.display = 'block';
+    leftZone.style.display = 'none';
+    rightZone.style.display = 'none';
+
+    setTimeout(() => {
+        jumpscareLayer.style.display = 'none';
+        teleportToGarden();
+    }, 2000);
+}
+
+function teleportToGarden() {
+    currentState = STATE.GARDEN;
+    player.position.set(2000, 1.5, 20); // Posição inicial no jardim
+    player.rotation.set(0, Math.PI, 0); // Olhando para o centro
+    camera.rotation.set(0, 0, 0);
+    
+    scene.fog.density = 0; // Sem névoa
+    scene.background = new THREE.Color(0x888888);
+    flashlight.intensity = 0; // Desliga a lanterna
+    
+    leftZone.style.display = 'block';
+    rightZone.style.display = 'block';
+    
+    // Espera uns segundos no jardim para mostrar a interface (UI)
+    setTimeout(() => {
+        gardenScreen.style.display = 'flex';
+        leftZone.style.display = 'none';
+        rightZone.style.display = 'none';
+    }, 4000);
+}
+
+// --- SISTEMA DE ÁUDIO (Web Audio API Sintetizado) ---
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Vento Constante (Ruído Branco filtrado)
+    let bufferSize = audioCtx.sampleRate * 2;
+    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    let data = buffer.getChannelData(0);
+    for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    
+    windNode = audioCtx.createBufferSource();
+    windNode.buffer = buffer;
+    windNode.loop = true;
+    
+    let windFilter = audioCtx.createBiquadFilter();
+    windFilter.type = 'lowpass';
+    windFilter.frequency.value = 300; // Som abafado
+    
+    let windGain = audioCtx.createGain();
+    windGain.gain.value = 0.8;
+    
+    windNode.connect(windFilter).connect(windGain).connect(audioCtx.destination);
+    windNode.start();
+}
+
+function startSinisterMusic() {
+    if(!audioCtx) return;
+    sinisterNode = audioCtx.createOscillator();
+    sinisterNode.type = 'sine';
+    sinisterNode.frequency.value = 45; // Frequência muito baixa e opressiva
+    
+    sinisterGain = audioCtx.createGain();
+    sinisterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+    sinisterGain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 2); // Fade in
+    
+    sinisterNode.connect(sinisterGain).connect(audioCtx.destination);
+    sinisterNode.start();
+}
+
+function stopSinisterMusic() {
+    if(sinisterGain && sinisterNode) {
+        sinisterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1);
+        setTimeout(() => sinisterNode.stop(), 1000);
+    }
+}
+
+function playWetSound() {
+    if(!audioCtx || currentState !== STATE.HUNTED) return;
+    
+    // Simula som de "carne a pisar/espremer" com osciladores e envelopes rápidos
+    let osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.15);
+    
+    let gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
+}
+
+function playJumpscareSound() {
+    if(!audioCtx) return;
+    // Ruído caótico e estridente
+    let osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = 150;
+    let osc2 = audioCtx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 215;
+    let osc3 = audioCtx.createOscillator(); osc3.type = 'sawtooth'; osc3.frequency.value = 850;
+    
+    let gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(2, audioCtx.currentTime); // Bem alto
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+    
+    osc1.connect(gain); osc2.connect(gain); osc3.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc1.start(); osc2.start(); osc3.start();
+    osc1.stop(audioCtx.currentTime + 1.5);
+    osc2.stop(audioCtx.currentTime + 1.5);
+    osc3.stop(audioCtx.currentTime + 1.5);
+}
+
+// --- CICLO DE RENDERIZAÇÃO ---
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (currentState !== STATE.START && currentState !== STATE.ENDING) {
+        updateMovement();
+        checkTriggers();
+        updateMonster();
+        renderer.render(scene, camera);
+    }
+}
+
+// ARRANQUE DO JOGO
+window.onload = init;
+
+</script>
+</body>
+</html>
+
+
+```
