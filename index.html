@@ -452,4 +452,401 @@ function createMonster() {
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
     eyeL.position.set(-0.2, 4.3, -0.55);
-    const eyeR = new THREE.Mesh(eyeGeo,
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(0.2, 4.3, -0.55);
+    monster.add(eyeL);
+    monster.add(eyeR);
+
+    // Esconde por enquanto
+    monster.position.set(0, -100, 0);
+    scene.add(monster);
+}
+
+// --- CONTROLOS MOBILE ---
+function setupControls() {
+    let activeJoystickId = null;
+    const baseRadius = 60;
+    const knobRadius = 25;
+
+    leftZone.addEventListener('touchstart', (e) => {
+        if (currentState !== STATE.FOREST && currentState !== STATE.INSIDE && currentState !== STATE.HUNTED && currentState !== STATE.GARDEN) return;
+        activeJoystickId = e.changedTouches[0].identifier;
+        handleJoystickMove(e.changedTouches[0]);
+    });
+
+    leftZone.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === activeJoystickId) {
+                handleJoystickMove(e.changedTouches[i]);
+            }
+        }
+    });
+
+    const resetJoystick = () => {
+        activeJoystickId = null;
+        joyKnob.style.transform = `translate(0px, 0px)`;
+        moveVector.set(0,0,0);
+    };
+
+    leftZone.addEventListener('touchend', resetJoystick);
+    leftZone.addEventListener('touchcancel', resetJoystick);
+
+    function handleJoystickMove(touch) {
+        const rect = leftZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = baseRadius - knobRadius;
+        
+        if (dist > maxDist) {
+            dx = (dx / dist) * maxDist;
+            dy = (dy / dist) * maxDist;
+        }
+        
+        joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        
+        // Normaliza de -1 a 1
+        moveVector.x = dx / maxDist;
+        moveVector.z = dy / maxDist;
+    }
+
+    // Controlo de Câmara
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    let activeLookId = null;
+
+    rightZone.addEventListener('touchstart', (e) => {
+        if (currentState !== STATE.FOREST && currentState !== STATE.INSIDE && currentState !== STATE.HUNTED && currentState !== STATE.GARDEN) return;
+        activeLookId = e.changedTouches[0].identifier;
+        lastTouchX = e.changedTouches[0].clientX;
+        lastTouchY = e.changedTouches[0].clientY;
+    });
+
+    rightZone.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === activeLookId) {
+                let dx = e.changedTouches[i].clientX - lastTouchX;
+                let dy = e.changedTouches[i].clientY - lastTouchY;
+                
+                player.rotation.y -= dx * lookSpeed;
+                camera.rotation.x -= dy * lookSpeed;
+                
+                // Trava o limite de olhar para cima/baixo
+                camera.rotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, camera.rotation.x));
+                
+                lastTouchX = e.changedTouches[i].clientX;
+                lastTouchY = e.changedTouches[i].clientY;
+            }
+        }
+    });
+
+    rightZone.addEventListener('touchend', () => activeLookId = null);
+    rightZone.addEventListener('touchcancel', () => activeLookId = null);
+}
+
+// --- FÍSICA E MOVIMENTO ---
+function checkCollision(newX, newZ, collidersArray) {
+    for (let col of collidersArray) {
+        if (col.type === 'circle') {
+            let dx = newX - col.x;
+            let dz = newZ - col.z;
+            if (Math.sqrt(dx*dx + dz*dz) < col.r + 0.5) return true; // 0.5 é o raio do jogador
+        } else if (col.type === 'box') {
+            if (newX > col.minX - 0.5 && newX < col.maxX + 0.5 &&
+                newZ > col.minZ - 0.5 && newZ < col.maxZ + 0.5) return true;
+        }
+    }
+    return false;
+}
+
+function updateMovement() {
+    if (moveVector.lengthSq() > 0 && (currentState === STATE.FOREST || currentState === STATE.INSIDE || currentState === STATE.HUNTED || currentState === STATE.GARDEN)) {
+        
+        let forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+        let right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+        
+        let moveDir = new THREE.Vector3();
+        moveDir.addScaledVector(right, moveVector.x);
+        moveDir.addScaledVector(forward, -moveVector.z);
+        moveDir.normalize().multiplyScalar(moveSpeed);
+
+        let newX = player.position.x + moveDir.x;
+        let newZ = player.position.z + moveDir.z;
+
+        // Seleciona as colisões do ambiente atual
+        let activeCols = colliders.forest;
+        if (currentState === STATE.INSIDE) activeCols = colliders.inside;
+        if (currentState === STATE.GARDEN) activeCols = colliders.garden;
+
+        // Movimento com colisão deslizante (Eixos separados)
+        if (!checkCollision(newX, player.position.z, activeCols)) {
+            player.position.x = newX;
+        }
+        if (!checkCollision(player.position.x, newZ, activeCols)) {
+            player.position.z = newZ;
+        }
+
+        // Bobbing (Caminhar)
+        player.position.y = 1.5 + Math.sin(Date.now() * 0.005) * 0.05;
+    }
+}
+
+// --- INTERAÇÕES E LÓGICA DO JOGO ---
+function setupInteractions() {
+    btnStart.addEventListener('click', () => {
+        document.getElementById('start-screen').style.display = 'none';
+        leftZone.style.display = 'block';
+        rightZone.style.display = 'block';
+        initAudio();
+        currentState = STATE.FOREST;
+        // Tenta Ecrã Inteiro
+        if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+    });
+
+    btnEnter.addEventListener('click', () => {
+        btnEnter.style.display = 'none';
+        currentState = STATE.INSIDE;
+        player.position.set(1000, 1.5, 5); // Teleporta para dentro
+        player.rotation.set(0, 0, 0);
+        camera.rotation.set(0, 0, 0);
+        flashlight.intensity = 0.5; // Lanterna fraca dentro
+        scene.fog.density = 0.01; // Menos névoa
+    });
+
+    btnRead.addEventListener('click', () => {
+        btnRead.style.display = 'none';
+        currentState = STATE.READING;
+        noteScreen.style.display = 'flex';
+        leftZone.style.display = 'none';
+        rightZone.style.display = 'none';
+        startSinisterMusic();
+    });
+
+    btnCloseNote.addEventListener('click', () => {
+        noteScreen.style.display = 'none';
+        leftZone.style.display = 'block';
+        rightZone.style.display = 'block';
+        currentState = STATE.INSIDE;
+        stopSinisterMusic();
+    });
+
+    btnExit.addEventListener('click', () => {
+        btnExit.style.display = 'none';
+        currentState = STATE.HUNTED;
+        player.position.set(0, 1.5, -42); // Volta para a floresta
+        player.rotation.y = 0; // Olhando para fora da casa
+        flashlight.intensity = 1.5;
+        scene.fog.density = 0.06;
+
+        // Faz o spawn do monstro
+        monster.position.set((Math.random() - 0.5) * 100, 0, 50); // Longe, atrás
+    });
+
+    btnFakeBack.addEventListener('click', () => {
+        gardenScreen.style.display = 'none';
+        eyeScreen.style.display = 'flex';
+        currentState = STATE.ENDING;
+        scene.background = new THREE.Color(0x000000);
+        document.getElementById('game-container').style.display = 'none'; // Esconde o 3D
+        document.querySelector('.vhs-overlay').style.display = 'none';
+    });
+}
+
+function checkTriggers() {
+    btnEnter.style.display = 'none';
+    btnRead.style.display = 'none';
+    btnExit.style.display = 'none';
+
+    if (currentState === STATE.FOREST) {
+        let dist = player.position.distanceTo(houseEntrancePos);
+        if (dist < 4) btnEnter.style.display = 'block';
+    } 
+    else if (currentState === STATE.INSIDE) {
+        let distTable = player.position.distanceTo(tablePos);
+        if (distTable < 3) btnRead.style.display = 'block';
+
+        let distDoor = player.position.distanceTo(houseExitPos);
+        if (distDoor < 4) btnExit.style.display = 'block';
+    }
+}
+
+function updateMonster() {
+    if (currentState === STATE.HUNTED) {
+        // Monstro sempre olha para o jogador e move-se lentamente
+        monster.lookAt(player.position.x, monster.position.y, player.position.z);
+        let dir = new THREE.Vector3().subVectors(player.position, monster.position).normalize();
+        monster.position.addScaledVector(dir, 0.06); // Velocidade do monstro
+
+        // Flutuação sinistra
+        monster.position.y = Math.sin(Date.now() * 0.002) * 0.5;
+
+        let dist = player.position.distanceTo(monster.position);
+
+        // Som de carne húmida a aproximar-se
+        if (dist < 20 && !wetSoundInterval) {
+            wetSoundInterval = setInterval(playWetSound, 800);
+        }
+
+        // JUMPSCARE!
+        if (dist < 2.5) {
+            triggerJumpscare();
+        }
+    }
+}
+
+function triggerJumpscare() {
+    currentState = STATE.JUMPSCARE;
+    if(wetSoundInterval) clearInterval(wetSoundInterval);
+    playJumpscareSound();
+    
+    // Força a câmara a olhar para o monstro
+    player.lookAt(monster.position);
+    camera.rotation.x = 0;
+    
+    jumpscareLayer.style.display = 'block';
+    leftZone.style.display = 'none';
+    rightZone.style.display = 'none';
+
+    setTimeout(() => {
+        jumpscareLayer.style.display = 'none';
+        teleportToGarden();
+    }, 2000);
+}
+
+function teleportToGarden() {
+    currentState = STATE.GARDEN;
+    player.position.set(2000, 1.5, 20); // Posição inicial no jardim
+    player.rotation.set(0, Math.PI, 0); // Olhando para o centro
+    camera.rotation.set(0, 0, 0);
+    
+    scene.fog.density = 0; // Sem névoa
+    scene.background = new THREE.Color(0x888888);
+    flashlight.intensity = 0; // Desliga a lanterna
+    
+    leftZone.style.display = 'block';
+    rightZone.style.display = 'block';
+    
+    // Espera uns segundos no jardim para mostrar a interface (UI)
+    setTimeout(() => {
+        gardenScreen.style.display = 'flex';
+        leftZone.style.display = 'none';
+        rightZone.style.display = 'none';
+    }, 4000);
+}
+
+// --- SISTEMA DE ÁUDIO (Web Audio API Sintetizado) ---
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Vento Constante (Ruído Branco filtrado)
+    let bufferSize = audioCtx.sampleRate * 2;
+    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    let data = buffer.getChannelData(0);
+    for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    
+    windNode = audioCtx.createBufferSource();
+    windNode.buffer = buffer;
+    windNode.loop = true;
+    
+    let windFilter = audioCtx.createBiquadFilter();
+    windFilter.type = 'lowpass';
+    windFilter.frequency.value = 300; // Som abafado
+    
+    let windGain = audioCtx.createGain();
+    windGain.gain.value = 0.8;
+    
+    windNode.connect(windFilter).connect(windGain).connect(audioCtx.destination);
+    windNode.start();
+}
+
+function startSinisterMusic() {
+    if(!audioCtx) return;
+    sinisterNode = audioCtx.createOscillator();
+    sinisterNode.type = 'sine';
+    sinisterNode.frequency.value = 45; // Frequência muito baixa e opressiva
+    
+    sinisterGain = audioCtx.createGain();
+    sinisterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+    sinisterGain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 2); // Fade in
+    
+    sinisterNode.connect(sinisterGain).connect(audioCtx.destination);
+    sinisterNode.start();
+}
+
+function stopSinisterMusic() {
+    if(sinisterGain && sinisterNode) {
+        sinisterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1);
+        setTimeout(() => sinisterNode.stop(), 1000);
+    }
+}
+
+function playWetSound() {
+    if(!audioCtx || currentState !== STATE.HUNTED) return;
+    
+    // Simula som de "carne a pisar/espremer" com osciladores e envelopes rápidos
+    let osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.15);
+    
+    let gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
+}
+
+function playJumpscareSound() {
+    if(!audioCtx) return;
+    // Ruído caótico e estridente
+    let osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = 150;
+    let osc2 = audioCtx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 215;
+    let osc3 = audioCtx.createOscillator(); osc3.type = 'sawtooth'; osc3.frequency.value = 850;
+    
+    let gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(2, audioCtx.currentTime); // Bem alto
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+    
+    osc1.connect(gain); osc2.connect(gain); osc3.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc1.start(); osc2.start(); osc3.start();
+    osc1.stop(audioCtx.currentTime + 1.5);
+    osc2.stop(audioCtx.currentTime + 1.5);
+    osc3.stop(audioCtx.currentTime + 1.5);
+}
+
+// --- CICLO DE RENDERIZAÇÃO ---
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (currentState !== STATE.START && currentState !== STATE.ENDING) {
+        updateMovement();
+        checkTriggers();
+        updateMonster();
+        renderer.render(scene, camera);
+    }
+}
+
+// ARRANQUE DO JOGO
+window.onload = init;
+
+</script>
+</body>
+</html>
+
+
+```
